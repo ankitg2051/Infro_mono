@@ -1,0 +1,83 @@
+trigger:
+- none
+
+pool:
+  goyal-pool
+
+stages:
+- stage: CI
+  jobs:
+  - job: CIWork
+    steps:
+    - task: TerraformInstaller@1
+      displayName: terraform_install
+      inputs:
+        terraformVersion: 'latest'
+    
+    - task: TerraformTask@5
+      displayName: terraorm_init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/parent_module'
+        backendServiceArm: 'infra_auto'
+        backendAzureRmResourceGroupName: 'backend-rg'
+        backendAzureRmStorageAccountName: 'backendstrg'
+        backendAzureRmContainerName: 'strg'
+        backendAzureRmKey: 'goyal-key'
+
+    - task: TerraformTask@5
+      displayName: terraform_validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/parent_module'
+
+    - task: TerraformTask@5
+      displayName: terraform_plan
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/parent_module'
+        environmentServiceNameAzureRM: 'infra_auto'
+
+- stage: CD
+  jobs:
+    - job: waitForValidation
+      displayName: "Wait for external validation"
+      pool: server # Specifies an agentless job
+      timeoutInMinutes: 4320 # Job can wait up to 3 days
+
+      steps:
+      - task: ManualValidation@1
+        displayName: manual_approval
+        timeoutInMinutes: 1440 # Task can wait up to 1 day
+        inputs:
+          notifyUsers: |
+            ankitg.2051@gmail.com
+
+    - job: CD
+      displayName: "apply_job"
+      steps:
+      - task: TerraformInstaller@1
+        displayName: terraform_tool_install
+        inputs:
+          terraformVersion: 'latest'
+      - task: TerraformTask@5
+        displayName: terraform_init
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/parent_module'
+          backendServiceArm: 'infra_auto'
+          backendAzureRmStorageAccountName: 'backendstrg'
+          backendAzureRmContainerName: 'strg'
+          backendAzureRmKey: 'keys'
+
+      - task: TerraformTask@5
+        displayName: terroform_apply
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/parent_module'
+          environmentServiceNameAzureRM: 'infra_auto'
